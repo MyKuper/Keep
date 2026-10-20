@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-bot.py — главный файл бота "Keep" (Бот для муравьёв).
+bot.py — главный файл бота-маркетплейса муравьёв "Keep".
 
-Запуск: python bot.py
-Токен берётся из config.py (или из переменной окружения BOT_TOKEN).
+Запуск:  python bot.py
+Токен берётся из .env / переменной окружения BOT_TOKEN (см. config.py).
 """
 
 import asyncio
@@ -12,74 +12,87 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.types import BotCommand, BotCommandScopeDefault
 
-import config
-import database
-from handlers import router
+import database as db
+from config import BOT_TOKEN
+from handlers import routers          # все роутеры (start/admin/seller/buyer)
+from middlewares.db import DbUserMiddleware
 
-# Настраиваем логирование: уровень INFO, вывод в консоль с датой и временем
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 
-async def set_bot_commands(bot: Bot) -> None:
-    """Регистрирует список команд в меню Telegram (для русскоязычных пользователей)."""
-    from aiogram.types import BotCommand
+def setup_logging() -> None:
+    """Настраивает логирование: уровень INFO, формат с временем и модулем."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+        handlers=[
+            logging.StreamHandler(),                          # вывод в консоль
+            logging.FileHandler("bot.log", encoding="utf-8"),  # и в файл
+        ],
+    )
 
+
+async def set_bot_commands(bot: Bot) -> None:
+    """Регистрирует меню команд для всех пользователей."""
     commands = [
-        BotCommand(command="start", description="Приветствие"),
-        BotCommand(command="help", description="Список команд"),
-        BotCommand(command="keep", description="Сохранить заметку"),
-        BotCommand(command="list", description="Показать все заметки"),
-        BotCommand(command="delete", description="Удалить заметку"),
+        BotCommand(command="start", description="🚀 Начать / выбрать роль"),
+        BotCommand(command="help", description="❓ Справка по командам"),
+        BotCommand(command="catalog", description="📋 Каталог муравьёв"),
+        BotCommand(command="search", description="🔍 Поиск по виду"),
+        BotCommand(command="favorites", description="⭐ Избранное"),
+        BotCommand(command="my_orders", description="📦 Мои запросы"),
+        BotCommand(command="add_product", description="➕ Добавить товар (продавец)"),
+        BotCommand(command="my_products", description="📦 Мои товары (продавец)"),
+        BotCommand(command="stats", description="📊 Статистика (продавец)"),
     ]
-    await bot.set_my_commands(commands)
+    try:
+        await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+        logger.info("Меню команд установлено")
+    except Exception:
+        logger.exception("Не удалось установить меню команд (не критично)")
 
 
 async def main() -> None:
-    """Точка входа: создаёт бота, инициализирует БД и запускает long polling."""
-    # Проверяем, что токен задан
-    if not config.BOT_TOKEN or config.BOT_TOKEN == "PASTE_YOUR_TOKEN_HERE":
-        raise RuntimeError(
-            "Токен бота не задан! Укажите его в config.py или в переменной окружения BOT_TOKEN."
+    """Точка входа: бот, диспетчер, middleware, роутеры, запуск polling."""
+    setup_logging()
+
+    if not BOT_TOKEN or BOT_TOKEN == "PASTE_YOUR_TOKEN_HERE":
+        raise SystemExit(
+            "❌ Токен не задан! Положите его в файл .env (BOT_TOKEN=...) "
+            "или задайте переменную окружения."
         )
 
-    # Инициализация базы данных SQLite
-    database.init_db()
+    # Инициализация SQLite (создание таблиц + справочника категорий)
+    db.init_db()
 
-    # Создаём экземпляр бота с режимом разметки HTML по умолчанию
     bot = Bot(
-        token=config.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),  # HTML по умолчанию
     )
-
-    # Диспетчер (роутер сообщений) и подключение обработчиков из handlers.py
     dp = Dispatcher()
-    dp.include_router(router)
 
-    # Регистрируем команды в меню бота
+    # Middleware: каждый апдейт автоматически регистрирует пользователя в БД
+    dp.message.middleware(DbUserMiddleware())
+    dp.callback_query.middleware(DbUserMiddleware())
+
+    # Подключаем все роутеры (start -> admin -> seller -> buyer)
+    for router in routers:
+        dp.include_router(router)
+
     await set_bot_commands(bot)
 
-    logger.info("Бот Keep запущен. Долгождания (long polling)...")
+    logger.info("🐜 Бот Keep (маркетплейс муравьёв) запущен. Ожидаю сообщения...")
     try:
-        # Запускаем long polling; delete_webhook нужен при переходе с вебхука
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+        await dp.start_polling(bot)   # long polling — без вебсервера и белого IP
     finally:
-        # Корректно закрываем сессию бота при остановке
         await bot.session.close()
-        logger.info("Бот остановлен.")
+        logger.info("Бот остановлен, сессия закрыта")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Бот выключен пользователем.")
-    except Exception:
-        # Логируем любые фатальные ошибки перед выходом
-        logger.exception("Бот аварийно завершился из-за непредвиденной ошибки.")
-        raise
+    except KeyboardInterrupt:
+        print("Бот остановлен пользователем.")
