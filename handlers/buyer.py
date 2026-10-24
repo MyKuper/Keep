@@ -143,7 +143,11 @@ async def cb_pagination(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("prod:"))
 async def cb_product(callback: CallbackQuery, state: FSMContext) -> None:
     """Открывает карточку товара (+1 просмотр)."""
-    product_id = int(callback.data.split(":")[1])
+    try:
+        product_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer("⛔ Некорректный запрос", show_alert=True)
+        return
     product = db.get_product(product_id)
     if not product:
         await callback.answer("Товар больше не доступен 😔", show_alert=True)
@@ -193,7 +197,11 @@ async def cb_back_catalog(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data.startswith("fav:"))
 async def cb_favorite(callback: CallbackQuery) -> None:
     """Добавляет/убирает товар из избранного."""
-    product_id = int(callback.data.split(":")[1])
+    try:
+        product_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer("⛔ Некорректный запрос", show_alert=True)
+        return
     uid = _internal_id(callback)
     if not uid:
         await callback.answer("Сначала нажмите /start", show_alert=True)
@@ -234,7 +242,11 @@ async def cmd_favorites(message: Message) -> None:
 @router.callback_query(F.data.startswith("buy:"))
 async def cb_buy(callback: CallbackQuery, bot: Bot) -> None:
     """Создаёт заказ «хочу купить» и уведомляет продавца."""
-    product_id = int(callback.data.split(":")[1])
+    try:
+        product_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer("⛔ Некорректный запрос", show_alert=True)
+        return
     buyer = db.get_user(callback.from_user.id)
     product = db.get_product(product_id)
     if not buyer or not product:
@@ -271,24 +283,54 @@ async def cb_buy(callback: CallbackQuery, bot: Bot) -> None:
 
 @router.callback_query(F.data.startswith("contact:"))
 async def cb_contact(callback: CallbackQuery) -> None:
-    """Показывает контакт продавца и переводит заказ в 'contacted'."""
-    product_id = int(callback.data.split(":")[1])
+    """Показывает контакт продавца и переводит заказ в 'contacted'.
+
+    Телефон продавца показывается только покупателям с активным заказом на
+    этот товар; остальным — только @username / ссылка t.me.
+    """
+    try:
+        product_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer("⛔ Некорректный запрос", show_alert=True)
+        return
     product = db.get_product(product_id)
     buyer = db.get_user(callback.from_user.id)
     if not product:
         await callback.answer("Товар недоступен 😔", show_alert=True)
         return
+    order = None
     if buyer:
         order = db.find_order(buyer["id"], product_id)
         if order:
             db.mark_order_contacted(order["id"])
-    await callback.message.answer(
-        "📞 <b>Контакты продавца:</b>\n"
-        f"Сообщество: <b>{escape(product['community_name'] or '—')}</b>\n"
-        f"Контакт: <code>{escape(product['seller_contact'] or 'не указан')}</code>\n"
-        f"Telegram продавца: @{product['seller_username'] or product['seller_telegram_id']}\n\n"
-        f"Напишите про товар «<b>{escape(product['species'])}</b>» — продавец поймёт 😉"
-    )
+
+    contact = product["seller_contact"] or ""
+    is_phone = contact.startswith("+") or contact.replace("-", "").replace(" ", "").isdigit()
+    has_order = order is not None
+    tg_link = f"@{product['seller_username']}" if product["seller_username"] else f"t.me/{product['seller_telegram_id']}"
+
+    if is_phone and not has_order:
+        # без заказа телефон не раскрываем — только публичный контакт
+        lines = [
+            "📞 <b>Контакты продавца:</b>",
+            f"Сообщество: <b>{escape(product['community_name'] or '—')}</b>",
+            f"Telegram продавца: <code>{tg_link}</code>",
+            "",
+            "🔒 Телефон доступен только покупателям с отправленным запросом:",
+            "нажмите «🛒 Хочу купить», затем «📞 Связаться» ещё раз.",
+            "",
+            f"Напишите про товар «<b>{escape(product['species'])}</b>» — продавец поймёт 😉",
+        ]
+    else:
+        lines = [
+            "📞 <b>Контакты продавца:</b>",
+            f"Сообщество: <b>{escape(product['community_name'] or '—')}</b>",
+            f"Контакт: <code>{escape(contact or 'не указан')}</code>",
+            f"Telegram продавца: @{product['seller_username'] or product['seller_telegram_id']}",
+            "",
+            f"Напишите про товар «<b>{escape(product['species'])}</b>» — продавец поймёт 😉",
+        ]
+    await callback.message.answer("\n".join(lines))
     await callback.answer("Контакт получен ✅")
 
 
