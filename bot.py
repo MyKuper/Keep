@@ -8,6 +8,9 @@ bot.py — главный файл бота-маркетплейса мурав�
 
 import asyncio
 import logging
+import os
+
+from aiohttp import web
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -32,6 +35,39 @@ def setup_logging() -> None:
             logging.FileHandler("bot.log", encoding="utf-8"),  # и в файл
         ],
     )
+
+
+async def _serve_forever(bot: Bot, dp: Dispatcher) -> None:
+    """Polling + health-сервер живут в одной программе.
+
+    Если polling падает (например, Unauthorized из-за битого токена),
+    ошибка логируется, а процесс продолжает держать HTTP-порт — иначе
+    Render Free Web Service считает сервис мёртвым/спящим.
+    """
+    async def health(request: web.Request) -> web.Response:
+        return web.Response(text="ok")
+
+    app = web.Application()
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+    app.router.add_get("/healthz", health)   # Health Check Path в Render
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))   # Render сам выдаёт PORT
+    await web.TCPSite(runner, "0.0.0.0", port).start()
+    logger.info("Health-сервер поднят на порту %s", port)
+
+    try:
+        await dp.start_polling(bot)          # long polling — без белого IP
+    except Exception:
+        logger.exception("Polling аварийно остановлен (проблемы с токеном?)")
+    finally:
+        await bot.session.close()
+        logger.info("Сессия Telegram закрыта; health-сервер держим открытым")
+
+    # Порт держим вечно: Render не усыпит сервис, а логи останутся доступны.
+    while True:
+        await asyncio.sleep(3600)
 
 
 async def set_bot_commands(bot: Bot) -> None:
@@ -84,11 +120,7 @@ async def main() -> None:
     await set_bot_commands(bot)
 
     logger.info("🐜 Бот Keep (маркетплейс муравьёв) запущен. Ожидаю сообщения...")
-    try:
-        await dp.start_polling(bot)   # long polling — без вебсервера и белого IP
-    finally:
-        await bot.session.close()
-        logger.info("Бот остановлен, сессия закрыта")
+    await _serve_forever(bot, dp)
 
 
 if __name__ == "__main__":
