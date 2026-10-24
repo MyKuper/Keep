@@ -106,20 +106,24 @@ async def cb_filters(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("flt:"))
 async def cb_filter_toggle(callback: CallbackQuery, state: FSMContext) -> None:
-    """Переключение значений фильтров (повторное нажатие снимает фильтр)."""
-    _, kind, value = callback.data.split(":")
+    """Переключение значений фильтров (повторное нажатие снимает фильтр).
+
+    flt:apply / flt:reset содержат только две части после split —
+    разбираем их до распаковки тройки, иначе ValueError вешает кнопку.
+    """
     data = await state.get_data()
     draft: dict = data.get("draft_filters", {})
 
-    if kind == "apply":
+    if callback.data == "flt:apply":
         await state.update_data(filters=draft)
         await _show_catalog(callback, page=1, filters=draft)
         await callback.answer("Фильтры применены")
         return
-    if kind == "reset":
+    if callback.data == "flt:reset":
         draft = {}
         await state.update_data(draft_filters={})
     else:
+        _, kind, value = callback.data.split(":")
         draft[kind] = None if draft.get(kind) == value else value
         draft = {k: v for k, v in draft.items() if v}  # убираем пустые
         await state.update_data(draft_filters=draft)
