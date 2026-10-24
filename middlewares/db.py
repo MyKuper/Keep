@@ -29,4 +29,11 @@ class DbUserMiddleware(BaseMiddleware):
             except Exception:
                 logger.exception("Ошибка middleware БД для пользователя %s", user.id)
                 data["db_user"] = None
+
+        # Глобальная блокировка: забаненные пользователи не доходят до хендлеров
+        db_user = data.get("db_user")
+        if db_user and db_user.get("role") == "blocked":
+            logger.info("Заблокированный пользователь %s обслужен не был", user.id)
+            return
+
         return await handler(event, data)
