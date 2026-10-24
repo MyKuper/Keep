@@ -294,13 +294,16 @@ def count_products(filters: Optional[dict] = None) -> int:
 
 def search_products(query: str, limit: int = 20) -> list:
     """Поиск по названию вида / описанию / категории (без учёта регистра)."""
-    like = f"%{query}%"
+    # Экранируем спецсимволы LIKE (% и _), чтобы пользовательский запрос
+    # не мог подменить шаблон поиска; экранирование через ESCAPE '\'.
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = f"%{escaped}%"
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT p.id, p.species, p.price, p.queen_count, p.worker_count,
                       c.name AS category_name, c.difficulty
                FROM products p LEFT JOIN categories c ON c.id = p.category_id
-               WHERE p.is_active = 1 AND (p.species LIKE ? OR p.description LIKE ? OR c.name LIKE ?)
+               WHERE p.is_active = 1 AND (p.species LIKE ? ESCAPE '\\' OR p.description LIKE ? ESCAPE '\\' OR c.name LIKE ? ESCAPE '\\')
                ORDER BY p.price ASC LIMIT ?""",
             (like, like, like, limit),
         ).fetchall()
