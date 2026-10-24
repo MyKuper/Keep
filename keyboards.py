@@ -15,7 +15,6 @@ from aiogram.types import (
 def role_select_kb() -> InlineKeyboardMarkup:
     """Выбор роли при первой команде /start."""
     return InlineKeyboardMarkup(
-        row_width=1,
         inline_keyboard=[
             [InlineKeyboardButton(text="🛒 Я покупатель", callback_data="role:buyer")],
             [InlineKeyboardButton(text="🏪 Я продавец", callback_data="role:seller")],
@@ -26,7 +25,6 @@ def role_select_kb() -> InlineKeyboardMarkup:
 def buyer_menu_kb() -> ReplyKeyboardMarkup:
     """Reply-меню покупателя: Каталог / Поиск / Избранное / Мои запросы."""
     return ReplyKeyboardMarkup(
-        row_width=2,
         resize_keyboard=True,
         keyboard=[
             [KeyboardButton(text="📋 Каталог"), KeyboardButton(text="🔍 Поиск")],
@@ -38,7 +36,6 @@ def buyer_menu_kb() -> ReplyKeyboardMarkup:
 def seller_menu_kb() -> ReplyKeyboardMarkup:
     """Reply-меню продавца: Добавить / Мои товары / Статистика / Настройки."""
     return ReplyKeyboardMarkup(
-        row_width=2,
         resize_keyboard=True,
         keyboard=[
             [KeyboardButton(text="➕ Добавить"), KeyboardButton(text="📦 Мои товары")],
@@ -99,7 +96,6 @@ def catalog_pagination_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
     if page < total_pages:
         nav_row.append(InlineKeyboardButton(text="Вперёд ▶", callback_data=f"pg:{page + 1}"))
     return InlineKeyboardMarkup(
-        row_width=3,
         inline_keyboard=[nav_row, [InlineKeyboardButton(text="🔍 Фильтры", callback_data="filters")]],
     )
 
@@ -107,7 +103,6 @@ def catalog_pagination_kb(page: int, total_pages: int) -> InlineKeyboardMarkup:
 def product_buttons_kb(product_id: int, is_favorite: bool = False) -> InlineKeyboardMarkup:
     """Кнопки карточки товара: купить / избранное / связаться / назад."""
     return InlineKeyboardMarkup(
-        row_width=2,
         inline_keyboard=[
             [InlineKeyboardButton(text="🛒 Хочу купить", callback_data=f"buy:{product_id}")],
             [InlineKeyboardButton(
@@ -154,7 +149,6 @@ def manage_product_kb(product_id: int, is_active: bool) -> InlineKeyboardMarkup:
     toggle_label = "🔴 Снять с продажи" if is_active else "🟢 Разместить снова"
     toggle_action = "off" if is_active else "on"
     return InlineKeyboardMarkup(
-        row_width=2,
         inline_keyboard=[
             [InlineKeyboardButton(text=toggle_label, callback_data=f"tog:{toggle_action}:{product_id}")],
             [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{product_id}")],

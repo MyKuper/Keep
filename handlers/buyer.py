@@ -30,12 +30,20 @@ async def _show_catalog(callback_or_message, page: int, filters: Optional[dict])
     page = min(max(page, 1), total_pages)
     products = db.list_products(filters, offset=(page - 1) * PAGE_SIZE, limit=PAGE_SIZE)
     text = build_catalog_text(products, page, total_pages, filters, total)
-    markup = kb.catalog_pagination_kb(page, total_pages)
-    # добавляем кнопки-карточки товаров
-    for pid, species, price, *_ in products:
-        markup.insert(
-            InlineKeyboardButton(text=f"🐜 {species} — {price}₽", callback_data=f"prod:{pid}")
-        )
+    # aiogram 3.x: у InlineKeyboardMarkup нет add/insert — собираем ряды списком
+    rows = [
+        [InlineKeyboardButton(text=f"🐜 {escape(species)} — {price}₽", callback_data=f"prod:{pid}")]
+        for pid, species, price, *_ in products
+    ]
+    nav_row = []
+    if page > 1:
+        nav_row.append(InlineKeyboardButton(text="◀ Назад", callback_data=f"pg:{page - 1}"))
+    nav_row.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="pg:noop"))
+    if page < total_pages:
+        nav_row.append(InlineKeyboardButton(text="Вперёд ▶", callback_data=f"pg:{page + 1}"))
+    rows.append(nav_row)
+    rows.append([InlineKeyboardButton(text="🔍 Фильтры", callback_data="filters")])
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
     if isinstance(callback_or_message, CallbackQuery):
         try:
             await callback_or_message.message.edit_text(text, reply_markup=markup)
@@ -230,9 +238,10 @@ async def cmd_favorites(message: Message) -> None:
         return
     from utils.filters import format_product_line
     text = "⭐ <b>Избранное</b>\n\n" + "\n\n".join(format_product_line(i) for i in items)
-    markup = InlineKeyboardMarkup(row_width=1)
-    for pid, species, *_ in items:
-        markup.insert(InlineKeyboardButton(text=f"🐜 {species}", callback_data=f"prod:{pid}"))
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🐜 {escape(species)}", callback_data=f"prod:{pid}")]
+        for pid, species, *_ in items
+    ])
     await message.answer(text, reply_markup=markup)
 
 
@@ -351,21 +360,21 @@ async def cmd_search(message: Message, command: Command) -> None:
     if not query:
         await message.answer("Использование: /search messor")
         return
-    _do_search(message, query)
+    await _do_search(message, query)
 
 
 @router.message(BuyerSearchStates.query)
 async def fsm_search(message: Message, state: FSMContext) -> None:
     """FSM-поиск после нажатия кнопки."""
     await state.clear()
-    _do_search(message, message.text.strip())
+    await _do_search(message, message.text.strip())
 
 
-def _do_search(message: Message, query: str) -> None:
+async def _do_search(message: Message, query: str) -> None:
     """Общий код вывода результатов поиска."""
     results = db.search_products(query)
     if not results:
-        message.answer(
+        await message.answer(
             f"😔 По запросу «<b>{escape(query)}</b>» ничего не найдено.\n"
             "Попробуйте латинское название рода (Messor, Camponotus...) "
             "или загляните в 📋 Каталог."
@@ -374,11 +383,11 @@ def _do_search(message: Message, query: str) -> None:
     from utils.filters import format_product_line
     text = f"🔍 <b>Нашлось: {len(results)}</b> по «{escape(query)}»\n\n" + \
            "\n\n".join(format_product_line(r) for r in results)
-    markup = InlineKeyboardMarkup(row_width=1)
-    for pid, species, price, *_ in results:
-        markup.insert(InlineKeyboardButton(text=f"🐜 {species} — {price}₽",
-                                          callback_data=f"prod:{pid}"))
-    message.answer(text, reply_markup=markup)
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🐜 {escape(species)} — {price}₽", callback_data=f"prod:{pid}")]
+        for pid, species, price, *_ in results
+    ])
+    await message.answer(text, reply_markup=markup)
 
 
 # ------------------------------ Мои запросы ------------------------------ #
