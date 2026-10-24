@@ -17,7 +17,8 @@ if os.path.exists(ENV_FILE):
             _line = _line.strip()
             if _line and not _line.startswith("#") and "=" in _line:
                 _key, _, _val = _line.partition("=")
-                os.environ.setdefault(_key.strip(), _val.strip())
+                # срезаем пробелы и возможные кавычки вокруг значения (BOT_TOKEN="...")
+                os.environ.setdefault(_key.strip(), _val.strip().strip("'\""))
 
 # Токен бота, полученный у @BotFather.
 # Приоритет: переменная окружения BOT_TOKEN (или .env), иначе — значение по умолчанию ниже.
