@@ -1,6 +1,7 @@
 # handlers/start.py — /start, /help, выбор роли, регистрация продавца
 
 import logging
+from html import escape
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -28,7 +29,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
         if user and user["role"] == "seller":
             await message.answer(
-                f"🏪 С возвращением, <b>{user['community_name'] or 'продавец'}</b>!\n"
+                f"🏪 С возвращением, <b>{escape(user['community_name'] or 'продавец')}</b>!\n"
                 "Ваше меню продавца:",
                 reply_markup=seller_menu_kb(),
             )
@@ -127,7 +128,7 @@ async def seller_contact(message: Message, state: FSMContext) -> None:
         await state.clear()
         await message.answer(
             f"✅ <b>Продавец зарегистрирован!</b>\n"
-            f"Сообщество: <b>{data['community_name']}</b>\n"
+            f"Сообщество: <b>{escape(data['community_name'])}</b>\n"
             f"Контакт: <code>{contact}</code>\n\n"
             "Меню продавца внизу 👇 Нажмите «➕ Добавить», чтобы выставить первый товар.",
             reply_markup=seller_menu_kb(),

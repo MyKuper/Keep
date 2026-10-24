@@ -1,6 +1,7 @@
 # handlers/admin.py — панель администратора: статистика, модерация, блокировка
 
 import logging
+from html import escape
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -69,7 +70,7 @@ async def cmd_recent_orders(message: Message) -> None:
         await message.answer("Запросов пока нет 🤷")
         return
     lines = [
-        f"№{r['id']} · {r['species']} ({r['price']}₽) · продавец «{r['community_name']}» "
+        f"№{r['id']} · {escape(r['species'])} ({r['price']}₽) · продавец «{escape(r['community_name'] or '—')}» "
         f"· покупатель @{r['username'] or '—'} · {r['status']}"
         for r in rows
     ]
@@ -94,7 +95,7 @@ async def cmd_hide(message: Message, command=None) -> None:
         return
     db.set_product_active(product_id, False)
     logger.info("Админ %s скрыл товар #%s", message.from_user.id, product_id)
-    await message.answer(f"🔴 Товар «{product['species']}» снят с витрины.")
+    await message.answer(f"🔴 Товар «{escape(product['species'])}» снят с витрины.")
 
 
 @router.message(Command("ban"))
